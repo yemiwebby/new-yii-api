@@ -1,0 +1,48 @@
+version: 2.1
+
+jobs:
+build:
+docker:
+  - image: cimg/php:7.4-browsers
+  - image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: auth_api_test
+
+steps:
+  - checkout
+
+  - run: sudo apt update
+  - run: sudo apt install php7.4-mysql
+
+  - run:
+      name: install dockerize
+      command: wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && sudo tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+      environment:
+        DOCKERIZE_VERSION: v0.3.0
+  - run:
+      name: Wait for db
+      command: dockerize -wait tcp://localhost:3306 -timeout 1m
+
+  - restore_cache:
+      keys:
+        - v1-dependencies-{{ checksum "composer.json" }}
+        - v1-dependencies-
+
+  - run:
+      name: "Install dependencies"
+      command: composer install
+
+  - save_cache:
+      key: v1-dependencies-{{ checksum "composer.json" }}
+      paths:
+        - ./vendor
+
+  - run:
+      name: "Prime test database"
+      command: php tests/bin/yii migrate --interactive=0
+
+  - run:
+      name: "Run tests"
+      command: php vendor/bin/codecept run api
